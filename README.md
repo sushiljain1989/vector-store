@@ -14,8 +14,8 @@ A TypeScript-based vector store for storing, searching, and managing documents w
 
 1. **Clone the repository:**
    ```sh
-   git clone <your-repo-url>
-   cd vector-store-ts
+   git clone https://github.com/sushiljain1989/vector-store.git
+   cd vector-store
    ```
 2. **Install dependencies:**
    ```sh
