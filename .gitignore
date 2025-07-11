@@ -1,0 +1,11 @@
+# Ignore coverage reports
+coverage/
+
+# Ignore node modules
+node_modules/
+
+# Ignore build output
+dist/
+
+# Ignore package lock file
+package-lock.json
