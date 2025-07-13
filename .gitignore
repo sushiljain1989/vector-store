@@ -9,3 +9,4 @@ dist/
 
 # Ignore package lock file
 package-lock.json
+.DS_Store
