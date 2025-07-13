@@ -1,3 +1,4 @@
+process.env.HOME = '/tmp/testhome';
 import fs from 'fs';
 import path from 'path';
 import lockfile from 'proper-lockfile';
@@ -6,7 +7,7 @@ import * as index from '../index';
 jest.mock('fs');
 jest.mock('proper-lockfile');
 
-const TEST_STORE_PATH = path.join(process.env.HOME || '', 'test-store.json');
+let TEST_STORE_PATH: string;
 const TEST_EMBEDDING_SIZE = 3;
 const VALID_EMBEDDING = [0.1, 0.2, 0.3];
 const VALID_CONTENT = 'test content';
@@ -25,6 +26,8 @@ describe('index.ts', () => {
   let errorSpy: jest.SpyInstance;
 
   beforeAll(() => {
+    // Set HOME for all tests to a valid value
+    process.env.HOME = '/tmp/testhome';
     // Prevent process.exit from killing Jest
     exitSpy = jest.spyOn(process, 'exit').mockImplementation(((code?: number) => { throw new Error(`process.exit: ${code}`); }) as any);
     // Optionally, silence error logs for cleaner output
@@ -41,6 +44,10 @@ describe('index.ts', () => {
     // Remove any cached storeData
     (index as any).storeData = undefined;
     (index as any).storePath = undefined;
+       // Set TEST_STORE_PATH after HOME is set
+    TEST_STORE_PATH = path.join(process.env.HOME || '', 'test-store.json');
+    // By default, mock realpathSync to return TEST_STORE_PATH
+    (fs.realpathSync as unknown as jest.Mock).mockReturnValue(TEST_STORE_PATH);
   });
 
   describe('configureStorePath', () => {
@@ -82,6 +89,31 @@ describe('index.ts', () => {
       const home = process.env.HOME || process.env.USERPROFILE || '';
       const invalidPath = home + '/../file.json';
       expect(() => index.configureStorePath(invalidPath, 3)).toThrow('Invalid store path. Path must be within your home directory.');
+    });
+  });
+
+  describe('isValidPath (hardened)', () => {
+    const home = process.env.HOME || process.env.USERPROFILE || '';
+    const validPath = path.join(home, 'valid.json');
+    const outsidePath = '/tmp/evil.json';
+
+    it('should reject symlink pointing outside home', () => {
+      (fs.existsSync as jest.Mock).mockReturnValue(true);
+      (fs.realpathSync as unknown as jest.Mock).mockReturnValue(outsidePath);
+      expect(() => index.configureStorePath(validPath, 3)).toThrow('Invalid store path. Path must be within your home directory.');
+    });
+
+    it('should accept symlink pointing inside home', () => {
+      (fs.existsSync as jest.Mock).mockReturnValue(true);
+      (fs.realpathSync as unknown as jest.Mock).mockReturnValue(validPath);
+      (fs.readFileSync as jest.Mock).mockReturnValue(JSON.stringify({ embeddingSize: 3, documents: [] }));
+      expect(() => index.configureStorePath(validPath, 3)).not.toThrow();
+    });
+
+    it('should reject if fs.realpathSync throws', () => {
+      (fs.existsSync as jest.Mock).mockReturnValue(true);
+      (fs.realpathSync as unknown as jest.Mock).mockImplementation(() => { throw new Error('fail'); });
+      expect(() => index.configureStorePath(validPath, 3)).toThrow('Invalid store path. Path must be within your home directory.');
     });
   });
 

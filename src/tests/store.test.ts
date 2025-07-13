@@ -1,7 +1,8 @@
 import fs from 'fs';
 import path from 'path';
 import os from 'os';
-import { loadStore, saveStore, Document } from '../store';
+import { loadStore, saveStore } from '../store';
+import { Document } from '../types/document';
 
 describe('store.ts', () => {
   const TEST_PATH = path.join(os.homedir(), 'vectors-store-test.json');

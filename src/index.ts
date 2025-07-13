@@ -3,11 +3,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import lockfile from 'proper-lockfile';
 
-export interface Document {
-  content: string;
-  embedding: number[];
-  timestamp: number;
-}
+import { Document } from './types/document';
 
 let storePath: string | undefined;
 let storeData: { embeddingSize: number; documents: Document[] } | undefined;
@@ -19,12 +15,20 @@ const MAX_STORE_SIZE = Number(process.env['MAX_STORE_SIZE']) || 10000;
  * @returns True if the path is valid, false otherwise.
  */
 function isValidPath(p: string): boolean {
-  // Allow only paths within the user's home directory and its subdirectories, disallow parent traversal
-  const resolved = path.resolve(p);
+  // Hardened: resolve symlinks, check for traversal, ensure .json, and restrict to home directory
   const home = process.env.HOME || process.env.USERPROFILE || '';
-  // Only allow .json files
-  const isJson = resolved.endsWith('.json');
-  return resolved.startsWith(home) && !p.includes('..') && isJson;
+  if (!home) return false;
+  if (!p.endsWith('.json')) return false;
+  if (p.includes('..')) return false;
+  const resolved = path.resolve(p);
+  let real: string;
+  try {
+    // If file exists, resolve symlinks; else use resolved path
+    real = fs.existsSync(resolved) ? fs.realpathSync(resolved) : resolved;
+  } catch {
+    return false;
+  }
+  return real.startsWith(home + path.sep) || real === home;
 }
 
 /**
@@ -32,11 +36,7 @@ function isValidPath(p: string): boolean {
  * @param message - The error message.
  * @param err - Optional error object.
  */
-function logError(message: string, err?: unknown) {
-  // Simple logging to stderr; replace with a real logger in production
-  const errorMsg = `[${new Date().toISOString()}] ERROR: ${message}` + (err ? ` | ${err instanceof Error ? err.stack : String(err)}` : '');
-  console.error(errorMsg);
-}
+import { logger } from './utils/logger';
 
 /**
  * Atomically writes data to a file by writing to a temp file and renaming.
@@ -59,7 +59,7 @@ function saveStoreData(data: { embeddingSize: number; documents: Document[] }, f
   try {
     atomicWriteFileSync(filePath, JSON.stringify(data, null, 2));
   } catch (err) {
-    logError('Failed to save store data atomically', err);
+    logger.error('Failed to save store data atomically', err);
     throw err;
   }
 }
@@ -128,7 +128,7 @@ function getStoreData(): { embeddingSize: number; documents: Document[] } {
         storeData = loadStoreData(storePath);
       }
     } catch (err) {
-      logError('Failed to load store', err);
+ logger.error('Failed to load store', err);
       throw new Error(`Failed to load store: ${err instanceof Error ? err.message : String(err)}`);
     }
   }
@@ -217,7 +217,7 @@ export function addDocument(content: string, embedding: number[]): void {
       retries: { retries: 5, factor: 2, minTimeout: 50, maxTimeout: 500 },
       stale: 30000, // 30 seconds stale lock timeout
       onCompromised: (err: Error) => {
-        logError('Lock compromised (possible crash or NFS issue)', err);
+        logger.error('Lock compromised (possible crash or NFS issue)', err);
         throw new Error('Lock on store file was compromised. Please check for concurrent access or system issues.');
       }
     });
@@ -225,7 +225,7 @@ export function addDocument(content: string, embedding: number[]): void {
     documents.push({ content, embedding, timestamp: Date.now() });
     saveStoreData({ embeddingSize, documents }, storePath);
   } catch (err) {
-    logError('Failed to save store (locking error)', err);
+    logger.error('Failed to save store (locking error)', err);
     throw new Error(`Failed to save store: ${err instanceof Error ? err.message : String(err)}`);
   } finally {
     // Always release the lock, even if an error occurs
@@ -255,7 +255,7 @@ export function search(contentEmbedding: number[], k: number = 5): Document[] {
       retries: { retries: 5, factor: 2, minTimeout: 50, maxTimeout: 500 },
       stale: 30000, // 30 seconds stale lock timeout
       onCompromised: (err: Error) => {
-        logError('Lock compromised (possible crash or NFS issue)', err);
+        logger.error('Lock compromised (possible crash or NFS issue)', err);
         throw new Error('Lock on store file was compromised. Please check for concurrent access or system issues.');
       }
     });

@@ -1,6 +1,6 @@
 import { topKSimilar } from '../search';
 import * as vectorUtils from '../vectorUtils';
-import { Document } from '../store';
+import { Document } from '../types/document';
 
 describe('topKSimilar', () => {
   const query = [1, 0, 0];
